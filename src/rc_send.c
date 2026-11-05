@@ -90,7 +90,7 @@ static int read_all(int fd, void *data, size_t len)
 	return 0;
 }
 
-/* Server: Wait for one client and returns the connected socket. */
+/* Server: Wait for one client and return the connected socket. */
 static int tcp_accept(const char *port)
 {
 	struct addrinfo hints, *res;
@@ -115,7 +115,7 @@ static int tcp_accept(const char *port)
 	}
 	setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
 
-	if (bind(lfd, res->ai_addr, res->ai_addrlen) | listen(lfd, 1)) {
+	if (bind(lfd, res->ai_addr, res->ai_addrlen) || listen(lfd, 1)) {
 		perror("bind/listen");
 		close(lfd);
 		freeaddrinfo(res);
@@ -307,7 +307,7 @@ static int post_send(struct rdma_res *r, uint32_t seq)
 
 /*
  * Busy-poll the CQ until the wanted numbers of send and receive completions
- * have arrived. Every receive is checked fro length and sequence number.
+ * have arrived. Every receive is checked for length and sequence number.
  */
 static int wait_completions(struct rdma_res *r, int sends, int recvs,
 			uint32_t expect_seq)
@@ -382,7 +382,7 @@ static int setup_res(struct rdma_res *r, struct ibv_device *dev, uint32_t size)
 	}
 	memset(r->buf, 0, 2 * (size_t)size);
 
-	/* LOCAL_WRITE lets the device write incoming SENDS into the buffer. */
+	/* LOCAL_WRITE lets the device write incoming SENDs into the buffer. */
 	r->mr = ibv_reg_mr(r->pd, r->buf, 2 * (size_t)size,
 				IBV_ACCESS_LOCAL_WRITE);
 	if (!r->mr) {
@@ -418,9 +418,9 @@ static void free_res(struct rdma_res *r)
 	if (r->qp && ibv_destroy_qp(r->qp))
 		fprintf(stderr, "ibv_destroy_qp failed\n");
 	if (r->cq && ibv_destroy_cq(r->cq))
-		fprintf(stderr, "ibv_destroy_cd failed\n");
+		fprintf(stderr, "ibv_destroy_cq failed\n");
 	if (r->mr && ibv_dereg_mr(r->mr))
-		fprintf(stderr, "ibv_dereg_rm failed\n");
+		fprintf(stderr, "ibv_dereg_mr failed\n");
 	if (r->pd && ibv_dealloc_pd(r->pd))
 		fprintf(stderr, "ibv_dealloc_pd failed\n");
 	free(r->buf);
@@ -582,7 +582,7 @@ int main(int argc, char *argv[])
 
 	{
 		double secs = (double)(t1.tv_sec - t0.tv_sec) +
-				(double)(t1.tv_sec - t0.tv_nsec) / 1e9;
+				(double)(t1.tv_nsec - t0.tv_nsec) / 1e9;
 		double bytes = (double)size * (double)iters * 2.0;
 
 		printf("%.0f bytes in %.2f seconds = %.2f Mbit/sec\n",
