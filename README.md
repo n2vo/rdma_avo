@@ -11,6 +11,7 @@ make
 ```
 
 #### Progress
-| Program | Concepts | 
+| Program | Concepts |
 |---|---|
 | `devinfo` | Device list, device limits, port attributes, GID table |
+| `resources` | PD, MR, CQ, and RC QP creation; QP state transitions RESET, INIT, RTR, RTS; teardown order |
