@@ -115,7 +115,7 @@ static int tcp_accept(const char *port)
 	}
 	setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
 
-	if (bind(lfd, res->ai_addr, res->ai_addrlen) | listen(lfd, 1)) {
+	if (bind(lfd, res->ai_addr, res->ai_addrlen) || listen(lfd, 1)) {
 		perror("bind/listen");
 		close(lfd);
 		freeaddrinfo(res);
