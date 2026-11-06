@@ -16,3 +16,4 @@ make
 | `devinfo` | Device list, device limits, port attributes, GID table |
 | `resources` | PD, MR, CQ, and RC QP creation; QP state transitions RESET, INIT, RTR, RTS; teardown order |
 | `rc_send` | Two-node RC SEND/RECV over a TCP exchange of QP number, PSN, and GID; work requests, SGEs, completion polling |
+| `rc_write` | One-sided RDMA WRITE into a peer buffer named by address and rkey; MR and QP remote-write access; target-side verification |

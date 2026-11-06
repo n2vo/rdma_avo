@@ -3,7 +3,7 @@
  * PSN, and GID over TCP, connect their QPs to each other, then bounce a
  * message back and forth, checking a sequence number in every message.
  * Program 3 of rdma_avo Phase 1.
- * 
+ *
  * Usage:
  *   server: rc_send [-d device] [-g gid_index] [-p tcp_port] [-n iters] [-s size]
  *   client: rc_send [-d device] [-g gid_index] [-p tcp_port] [-n iters] [-s size]
@@ -48,7 +48,7 @@ struct rdma_res {
 };
 
 /* ---------- TCP: Used only to swap connection details ---------- */
-static int write_all(int fd, const void *data, size_t len) 
+static int write_all(int fd, const void *data, size_t len)
 {
 	const char *p = data;
 
@@ -162,7 +162,15 @@ static int tcp_connect(const char *host, const char *port)
 	return fd;
 }
 
-/* Both sides write first, then read. 24 bytes fit in any socket buffer. */
+/* Both sides write first, then read. 24 bytes fit in any socket buffer.
+ *
+ * Function  Name Reads As                   Width              Header
+ * --------  ---------------------------     -----------------  -------------
+ * htonl     host to network, long           32-bit (uint32_t)  <arpa/inet.h>
+ * ntohl     network to host, long           32-bit (uint32_t)  <arpa/inet.h>
+ * htobe64   host to big-endian, 64-bit      64-bit (uint64_t)  <endian.h>
+ * be64toh   big-endian, 64-bit, to host     64-bit (uint64_t)  <endian.h>
+ */
 static int exchange_info(int fd, const struct conn_info *local,
 			struct conn_info *remote)
 {
@@ -356,7 +364,7 @@ static int wait_completions(struct rdma_res *r, int sends, int recvs,
 
 /* ---------- Setup and teardown ---------- */
 
-static int setup_res(struct rdma_res *r, struct ibv_device *dev, uint32_t size) 
+static int setup_res(struct rdma_res *r, struct ibv_device *dev, uint32_t size)
 {
 	struct ibv_qp_init_attr init_attr;
 
