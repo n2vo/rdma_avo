@@ -417,10 +417,10 @@ static int setup_res(struct rdma_res *r, struct ibv_device *dev, uint32_t size)
 	 */
 	r->mr = ibv_reg_mr(r->pd, r->buf, size,
 				IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ);
-	/* Fualt injection test by removing IBV_ACCESS_REMOTE_READ */
+	/* Fault test: Without REMOTE_READ on the MR, client gets "remote access error". */
 	// r->mr = ibv_reg_mr(r->pd, r->buf, size,
-    //            IBV_ACCESS_LOCAL_WRITE);
-	
+	//			IBV_ACCESS_LOCAL_WRITE);
+
 	if (!r->mr) {
 		perror("ibv_reg_mr");
 		return -1;
