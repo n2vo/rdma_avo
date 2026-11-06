@@ -7,8 +7,8 @@
  * Program 6 of rdma_avo Phase 1.
  *
  * Usage:
- *   server: rc_write [-d device] [-g gid_index] [-p tcp_port] [-n iters] [-s size]
- *   client: rc_write [-d device] [-g gid_index] [-p tcp_port] [-n iters] [-s size] server_ip
+ *   server: rc_write_imm [-d device] [-g gid_index] [-p tcp_port] [-n iters] [-s size]
+ *   client: rc_write_imm [-d device] [-g gid_index] [-p tcp_port] [-n iters] [-s size] server_ip
  */
 
 #include <arpa/inet.h>
@@ -325,7 +325,7 @@ static int post_write_imm(struct rdma_res *r, uint32_t seq,
 	return ret ? -1 : 0;
 }
 
-/* 
+/*
  * Server: Post one receive for an incoming WRITE with immediate. The data
  * goes where the client's WRITE names, not into this receive, so the receive
  * needs no buffer: Zero SGEs. It exists only to be consumed and to produce
@@ -342,12 +342,12 @@ static int post_recv(struct rdma_res *r)
 	int ret;
 
 	ret = ibv_post_recv(r->qp, &wr, &bad);
-	if (ret) 
+	if (ret)
 		fprintf(stderr, "ibv_post_recv: %s\n", strerror(ret));
 	return ret ? -1 : 0;
 }
 
-/* 
+/*
  * Busy-poll the CQ for the WRITE's completion. On RC it arrives only after
  * the peer acknowledged the WRITE, so the data is in the peer's memory.
  * On the sender, a WRITE with immediate completes as IBV_WC_RDMA_WRITE.
@@ -382,7 +382,7 @@ static int wait_write_completion(struct rdma_res *r)
 /*
  * Server: Busy-poll the CQ for the completion of a WRITE with immediate. Its
  * opcode is IBV_WC_RECV_RDMA_WITH_IMM, wc_flags has IBV_WC_WITH_IMM set,
- * imm_data holds the sender's value in network byte order, and byte-len is 
+ * imm_data holds the sender's value in network byte order, and byte_len is
  * the length of the WRITE.
  */
 static int wait_imm_completion(struct rdma_res *r, uint32_t expect_seq)
@@ -397,7 +397,7 @@ static int wait_imm_completion(struct rdma_res *r, uint32_t expect_seq)
 		}
 		if (n == 0)
 			continue;
-		
+
 		if (wc.status != IBV_WC_SUCCESS) {
 			fprintf(stderr, "completion error: %s (wr_id %" PRIu64 ")\n",
 					ibv_wc_status_str(wc.status), wc.wr_id);
@@ -627,7 +627,7 @@ int main(int argc, char *argv[])
 		goto out;
 
 	/*
-	 * Server: Post receives before the client can send. Each WRITE with 
+	 * Server: Post receives before the client can send. Each WRITE with
 	 * immediate consumes one; the loop below re-posts one per completion.
 	 */
 	if (!server_ip) {
@@ -685,12 +685,12 @@ int main(int argc, char *argv[])
 		printf("%ld iters in %.2f seconds = %.2f usec/iter\n",
 				iters, secs, secs * 1e6 / (double)iters);
 	} else {
-		/* 
+		/*
 		 * Server: One completion per WRITE, in order, each carrying its
 		 * seq as the immediate value. Re-post a receive after each, so
 		 * the client never finds the receive queue empty. The buffer is
 		 * checked only at the end: The client's next WRITE may already
-		 * be overwriting it while the loop runs. 
+		 * be overwriting it while the loop runs.
 		 */
 		for (uint32_t seq = 0; seq < (uint32_t)iters; seq++) {
 			if (wait_imm_completion(&r, seq) || post_recv(&r))
