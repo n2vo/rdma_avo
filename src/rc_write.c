@@ -1,12 +1,13 @@
 /*
- * rc_send: Two-node RC SEND/RECV ping-pong. The two sides swap QP number,
- * PSN, and GID over TCP, connect their QPs to each other, then bounce a
- * message back and forth, checking a sequence number in every message.
- * Program 3 of rdma_avo Phase 1.
+ * rc_write: Two-node RC one-sided RDMA WRITE. The server exposes a buffer by
+ * sending its address and rkey over TCP; the client writes into that buffer
+ * directly. The server's CPU posts nothing and sees no completions. It checks
+ * the buffer once, at the end.
+ * Program 4 of rdma_avo Phase 1.
  *
  * Usage:
- *   server: rc_send [-d device] [-g gid_index] [-p tcp_port] [-n iters] [-s size]
- *   client: rc_send [-d device] [-g gid_index] [-p tcp_port] [-n iters] [-s size]
+ *   server: rc_write [-d device] [-g gid_index] [-p tcp_port] [-n iters] [-s size]
+ *   client: rc_write [-d device] [-g gid_index] [-p tcp_port] [-n iters] [-s size] server_ip
  */
 
 #include <arpa/inet.h>
@@ -46,7 +47,7 @@ struct rdma_res {
 	struct ibv_mr *mr;
 	struct ibv_cq *cq;
 	struct ibv_qp *qp;
-	char *buf;		/* [0, size) receives; [size, 2 * size) sends */
+	char *buf;		/* Client: WRITE source. Server: WRITE target. */
 	uint32_t size;
 };
 
@@ -182,7 +183,7 @@ static int exchange_info(int fd, const struct conn_info *local,
 	struct conn_info wire = *local;
 
 	wire.qpn = htonl(local->qpn);
-	wire.psn =  htonl(local->psn);
+	wire.psn = htonl(local->psn);
 	wire.addr = htobe64(local->addr);
 	wire.rkey = htonl(local->rkey);
 	if (write_all(fd, &wire, sizeof(wire)) || read_all(fd, &wire, sizeof(wire)))
@@ -217,7 +218,7 @@ static int qp_to_init(struct ibv_qp *qp)
 	attr.port_num = PORT_NUM;
 
 	/*
-	 * Let the peer RDMA WRTIE through this QP. The MR must also allow it;
+	 * Let the peer RDMA WRITE through this QP. The MR must also allow it;
 	 * the QP flag permits the operation on this connection, the MR flag
 	 * permits it on the memory.
 	 */
@@ -230,7 +231,7 @@ static int qp_to_init(struct ibv_qp *qp)
 				IBV_QP_PORT | IBV_QP_ACCESS_FLAGS);
 	if (ret)
 		fprintf(stderr, "ibv_modify_qp(INIT): %s\n", strerror(ret));
-	return ret ? -1 : 0 ;
+	return ret ? -1 : 0;
 }
 
 static int qp_to_rtr(struct ibv_qp *qp, enum ibv_mtu mtu,
@@ -288,7 +289,6 @@ static int qp_to_rts(struct ibv_qp *qp, uint32_t local_psn)
  * Fill the local buffer with seq's low byte, put seq itself in the first
  * 4 bytes, and RDMA WRITE the whole buffer to the peer's buffer.
  */
-
 static int post_write(struct rdma_res *r, uint32_t seq,
 			const struct conn_info *remote)
 {
@@ -300,7 +300,7 @@ static int post_write(struct rdma_res *r, uint32_t seq,
 	struct ibv_send_wr wr = {
 		.wr_id = WRID_WRITE,
 		.sg_list = &sge,
-		.num_sge =  1,
+		.num_sge = 1,
 		.opcode = IBV_WR_RDMA_WRITE,
 		.send_flags = IBV_SEND_SIGNALED,
 	};
@@ -311,7 +311,7 @@ static int post_write(struct rdma_res *r, uint32_t seq,
 	wr.wr.rdma.remote_addr = remote->addr;
 	wr.wr.rdma.rkey = remote->rkey;
 
-	memset(r->buf, (int)(seq &0xff), r->size);
+	memset(r->buf, (int)(seq & 0xff), r->size);
 	memcpy(r->buf, &seq, sizeof(seq));
 
 	ret = ibv_post_send(r->qp, &wr, &bad);
@@ -322,7 +322,7 @@ static int post_write(struct rdma_res *r, uint32_t seq,
 
 /*
  * Busy-poll the CQ for the WRITE's completion. On RC it arrives only after
- * the peer acknowledged the WRTE, so the data is in the peer's memory.
+ * the peer acknowledged the WRITE, so the data is in the peer's memory.
  */
 static int wait_write_completion(struct rdma_res *r)
 {
@@ -334,7 +334,7 @@ static int wait_write_completion(struct rdma_res *r)
 			fprintf(stderr, "ibv_poll_cq failed\n");
 			return -1;
 		}
-		if (n ==0)
+		if (n == 0)
 			continue;
 
 		if (wc.status != IBV_WC_SUCCESS) {
@@ -342,7 +342,7 @@ static int wait_write_completion(struct rdma_res *r)
 				ibv_wc_status_str(wc.status), wc.wr_id);
 			return -1;
 		}
-		if  (wc.wr_id != WRID_WRITE || wc.opcode != IBV_WC_RDMA_WRITE) {
+		if (wc.wr_id != WRID_WRITE || wc.opcode != IBV_WC_RDMA_WRITE) {
 			fprintf(stderr, "unexpected completion: wr_id %" PRIu64 ", opcode %d\n",
 				wc.wr_id, wc.opcode);
 			return -1;
@@ -351,7 +351,7 @@ static int wait_write_completion(struct rdma_res *r)
 	}
 }
 
-/* Server: Check that the buffer holds exactly what the last WRITE carried.*/
+/* Server: Check that the buffer holds exactly what the last WRITE carried. */
 static int verify_buffer(const struct rdma_res *r, uint32_t last_seq)
 {
 	const uint8_t fill = (uint8_t)(last_seq & 0xff);
@@ -363,7 +363,7 @@ static int verify_buffer(const struct rdma_res *r, uint32_t last_seq)
 		return -1;
 	}
 	for (uint32_t i = sizeof(seq); i < r->size; i++) {
-		if((uint8_t)r->buf[i] != fill) {
+		if ((uint8_t)r->buf[i] != fill) {
 			fprintf(stderr, "byte %u is 0x%02x, expected 0x%02x\n",
 					i, (uint8_t)r->buf[i], fill);
 			return -1;
@@ -393,8 +393,7 @@ static int setup_res(struct rdma_res *r, struct ibv_device *dev, uint32_t size)
 		return -1;
 	}
 
-	if (posix_memalign((void **)&r->buf, (size_t)sysconf(_SC_PAGESIZE),	size))
-	{
+	if (posix_memalign((void **)&r->buf, (size_t)sysconf(_SC_PAGESIZE), size)) {
 		fprintf(stderr, "posix_memalign failed\n");
 		r->buf = NULL;
 		return -1;
@@ -488,7 +487,7 @@ int main(int argc, char *argv[])
 	int status = EXIT_FAILURE;
 
 	while ((opt = getopt(argc, argv, "d:g:p:n:s:")) != -1) {
-		switch(opt) {
+		switch (opt) {
 		case 'd':
 			dev_name = optarg;
 			break;
@@ -524,7 +523,7 @@ int main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
 	for (int i = 0; i < num; i++) {
-		if(!dev_name || !strcmp(ibv_get_device_name(list[i]), dev_name)) {
+		if (!dev_name || !strcmp(ibv_get_device_name(list[i]), dev_name)) {
 			dev = list[i];
 			break;
 		}
@@ -555,7 +554,7 @@ int main(int argc, char *argv[])
 	if (qp_to_init(r.qp))
 		goto out;
 
-	/* Zero first: The struct's padding types also go over TCP. */
+	/* Zero first: The struct's padding bytes also go over TCP. */
 	memset(&local, 0, sizeof(local));
 	srand48(time(NULL) ^ getpid());
 	local.qpn = r.qp->qp_num;
@@ -575,22 +574,22 @@ int main(int argc, char *argv[])
 
 	if (qp_to_rtr(r.qp, port_attr.active_mtu, &remote, (uint8_t)gid_index))
 		goto out;
-	if(qp_to_rts(r.qp, local.psn))
+	if (qp_to_rts(r.qp, local.psn))
 		goto out;
 
-	/* Both QPs must be in RTS before the first SEND. */
-	if(barrier(fd))
+	/* Both QPs must be in RTS before the first WRITE. */
+	if (barrier(fd))
 		goto out;
 
 	if (server_ip) {
 		clock_gettime(CLOCK_MONOTONIC, &t0);
 		for (uint32_t seq = 0; seq < (uint32_t)iters; seq++) {
-			if(post_write(&r, seq, &remote) || wait_write_completion(&r))
+			if (post_write(&r, seq, &remote) || wait_write_completion(&r))
 				goto out;
 		}
 		clock_gettime(CLOCK_MONOTONIC, &t1);
 
-		/* Tell the server eery WRITE has landed. */
+		/* Tell the server every WRITE has landed. */
 		if (barrier(fd))
 			goto out;
 
@@ -599,34 +598,22 @@ int main(int argc, char *argv[])
 		double bytes = (double)size * (double)iters;
 
 		printf("%.0f bytes in %.2f seconds = %.2f Mbit/sec\n",
-				bytes, secs, bytes * 8.0 / secs /1e6);
+				bytes, secs, bytes * 8.0 / secs / 1e6);
 		printf("%ld iters in %.2f seconds = %.2f usec/iter\n",
 				iters, secs, secs * 1e6 / (double)iters);
 	} else {
 		/* Server: Nothing to post or poll. Wait for the client to finish. */
 		if (barrier(fd))
 			goto out;
-		if(verify_buffer(&r, (uint32_t)(iters - 1)))
+		if (verify_buffer(&r, (uint32_t)(iters - 1)))
 			goto out;
 	}
 	status = EXIT_SUCCESS;
 
 out:
-	if(fd >= 0)
+	if (fd >= 0)
 		close(fd);
 	free_res(&r);
 	ibv_free_device_list(list);
 	return status;
 }
-
-
-
-
-
-
-
-
-
-
-
-
