@@ -1,7 +1,7 @@
 CFLAGS := -std=c11 -O2 -g -Wall -Wextra -Wshadow -Wconversion -Werror -D_GNU_SOURCE
 LDLIBS := -libverbs
 
-PROGS := devinfo resources rc_send rc_write rc_read
+PROGS := devinfo resources rc_send rc_write rc_read rc_write_imm
 BINS  := $(addprefix bin/,$(PROGS))
 
 all: $(BINS)
