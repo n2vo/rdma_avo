@@ -19,3 +19,4 @@ make
 | `rc_write` | One-sided RDMA WRITE into a peer buffer named by address and rkey; MR and QP remote-write access; target-side verification |
 | `rc_read` | One-sided RDMA READ from a peer buffer named by address and rkey; MR and QP remote-read access; outstanding-read limits; pattern verification on both sides |
 | `rc_write_imm` | RDMA WRITE with immediate data; zero-SGE receives consumed by the WRITE; target-side completions carrying the immediate in order |
+| `rc_atomic` | Remote fetch-and-add and compare-and-swap on an 8-byte counter; MR and QP remote-atomic access; prior values returned to the requester; device atomic capability |
